@@ -8,16 +8,17 @@ Hybrid implementation combining:
 - Infinite zoom capability with adaptive detail
 
 Controls:
-- Left Click: Zoom in 3x at the clicked location
-- Right Click: Zoom out 3x
+- Scroll Up: Zoom in at cursor position
+- Scroll Down: Zoom out at cursor position
+- Left Click: Center view at clicked location
 - Close window: Exit the program
 
 Setup:
 1. Compile C library:
    gcc -O3 -march=native -fopenmp -shared -fPIC mandelbrot_compute.c -o mandelbrot_compute.dll -lm
 
-Author: Chaos Theory Demonstration
-Date: 2025
+Author: Aashish Panta
+Date: 2025/11/20
 """
 
 import numpy as np
@@ -105,7 +106,11 @@ class InteractiveMandelbrot:
         self.xmin, self.xmax = -2.5, 1.0
         self.ymin, self.ymax = -1.25, 1.25
         self.max_iter = 256
-        self.width, self.height = 1200, 900  # Higher resolution thanks to C speed!
+        self.width, self.height = 1200, 900  # Optimized for smooth scrolling
+
+        # Cache for faster rendering
+        self.last_data = None
+        self.rendering = False  # Prevent overlapping renders
 
         # Create figure and axis
         self.fig, self.ax = plt.subplots(figsize=(16, 12), facecolor='black')
@@ -142,13 +147,14 @@ class InteractiveMandelbrot:
         self.im = None
         self.update_plot()
 
-        # Connect click event
+        # Connect events
+        self.fig.canvas.mpl_connect('scroll_event', self.on_scroll)
         self.fig.canvas.mpl_connect('button_press_event', self.on_click)
 
         # Instructions
         self.ax.set_title(
             'Interactive Mandelbrot Set - C Speed + Matplotlib Beauty\n'
-            'Left Click: Zoom In 3x | Right Click: Zoom Out 3x',
+            'Scroll Up/Down: Zoom In/Out | Left Click: Center View',
             color='white', fontsize=16, pad=20, weight='bold'
         )
 
@@ -157,8 +163,9 @@ class InteractiveMandelbrot:
         print("Interactive Mandelbrot Fractal Explorer (C-Accelerated)")
         print("="*70)
         print("Controls:")
-        print("  • Left Click  → Zoom In 3x at clicked location")
-        print("  • Right Click → Zoom Out 3x")
+        print("  • Scroll Up    → Zoom In at cursor position")
+        print("  • Scroll Down  → Zoom Out at cursor position")
+        print("  • Left Click   → Center view at clicked location")
         print("  • Close Window → Exit")
         print("\nCombining C computation speed with matplotlib visualization!")
         print("="*70 + "\n")
@@ -182,6 +189,12 @@ class InteractiveMandelbrot:
 
     def update_plot(self):
         """Recompute and redraw the fractal at current zoom level"""
+        # Skip if already rendering
+        if self.rendering:
+            return
+
+        self.rendering = True
+
         zoom_level = 3.5 / (self.xmax - self.xmin)
         print(f"Computing fractal at {self.width}x{self.height}...")
         print(f"  Zoom: {zoom_level:.2f}x | Iterations: {self.max_iter}")
@@ -197,7 +210,7 @@ class InteractiveMandelbrot:
                 mandelbrot_set,
                 extent=[self.xmin, self.xmax, self.ymin, self.ymax],
                 cmap=self.cmap,
-                interpolation='bilinear',
+                interpolation='nearest',  # Faster than bilinear
                 origin='lower'
             )
             self.ax.set_aspect('equal')
@@ -208,10 +221,13 @@ class InteractiveMandelbrot:
         self.ax.set_xlim(self.xmin, self.xmax)
         self.ax.set_ylim(self.ymin, self.ymax)
         self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()  # Process events immediately
         print()
 
-    def on_click(self, event):
-        """Handle mouse clicks for zooming"""
+        self.rendering = False
+
+    def on_scroll(self, event):
+        """Handle mouse scroll for zooming"""
         if event.inaxes != self.ax:
             return
 
@@ -219,16 +235,17 @@ class InteractiveMandelbrot:
         if cx is None or cy is None:
             return
 
-        if event.button == 1:  # Left click - zoom in
-            zoom_factor = 3.0
-            print(f"→ Zooming IN at ({cx:.10f}, {cy:.10f})")
-        elif event.button == 3:  # Right click - zoom out
-            zoom_factor = 1.0 / 3.0
-            print(f"← Zooming OUT from ({cx:.10f}, {cy:.10f})")
+        # Smoother zoom factor for fluid scrolling
+        if event.button == 'up':
+            zoom_factor = 1.2  # Gentler zoom in for smooth scrolling
+            print(f"↑ Zooming IN at ({cx:.10f}, {cy:.10f})")
+        elif event.button == 'down':
+            zoom_factor = 1.0 / 1.2  # Gentler zoom out
+            print(f"↓ Zooming OUT from ({cx:.10f}, {cy:.10f})")
         else:
             return
 
-        # Calculate new bounds
+        # Calculate new bounds centered on cursor
         width = (self.xmax - self.xmin) / zoom_factor
         height = (self.ymax - self.ymin) / zoom_factor
 
@@ -237,11 +254,33 @@ class InteractiveMandelbrot:
         self.ymin = cy - height / 2
         self.ymax = cy + height / 2
 
-        # Adaptive iterations for detail at deep zooms
+        # Adaptive iterations - cap lower for smoother scrolling
         zoom_level = 3.5 / (self.xmax - self.xmin)
-        self.max_iter = min(1024, int(256 * (1 + np.log10(max(1, zoom_level)))))
+        self.max_iter = min(512, int(256 * (1 + np.log10(max(1, zoom_level)) * 0.7)))
 
         self.update_plot()
+
+    def on_click(self, event):
+        """Handle mouse clicks for centering view"""
+        if event.inaxes != self.ax:
+            return
+
+        cx, cy = event.xdata, event.ydata
+        if cx is None or cy is None:
+            return
+
+        if event.button == 1:  # Left click - center view
+            # Keep current zoom level, just recenter
+            width = self.xmax - self.xmin
+            height = self.ymax - self.ymin
+
+            self.xmin = cx - width / 2
+            self.xmax = cx + width / 2
+            self.ymin = cy - height / 2
+            self.ymax = cy + height / 2
+
+            print(f"⊙ Centered at ({cx:.10f}, {cy:.10f})")
+            self.update_plot()
 
 
 def main():

@@ -25,20 +25,61 @@
     #define EXPORT
 #endif
 
-// Compute Mandelbrot iteration count for a single point
+// Compute Mandelbrot iteration count for a single point - Optimized
 static inline int mandelbrot_point(double cr, double ci, int max_iter) {
     double zr = 0.0, zi = 0.0;
     double zr2 = 0.0, zi2 = 0.0;
 
-    for (int i = 0; i < max_iter; i++) {
-        if (zr2 + zi2 > 4.0) {
-            return i;
-        }
+    // Main cardioid and period-2 bulb checking for instant bailout
+    double q = (cr - 0.25) * (cr - 0.25) + ci * ci;
+    if (q * (q + (cr - 0.25)) < 0.25 * ci * ci) {
+        return max_iter; // Inside main cardioid
+    }
+    if ((cr + 1.0) * (cr + 1.0) + ci * ci < 0.0625) {
+        return max_iter; // Inside period-2 bulb
+    }
+
+    // Unrolled loop for better performance (process 4 iterations at once)
+    int i = 0;
+    for (; i < max_iter - 3; i += 4) {
+        // Iteration 1
+        if (zr2 + zi2 > 4.0) return i;
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
+        zr2 = zr * zr;
+        zi2 = zi * zi;
+
+        // Iteration 2
+        if (zr2 + zi2 > 4.0) return i + 1;
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
+        zr2 = zr * zr;
+        zi2 = zi * zi;
+
+        // Iteration 3
+        if (zr2 + zi2 > 4.0) return i + 2;
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
+        zr2 = zr * zr;
+        zi2 = zi * zi;
+
+        // Iteration 4
+        if (zr2 + zi2 > 4.0) return i + 3;
         zi = 2.0 * zr * zi + ci;
         zr = zr2 - zi2 + cr;
         zr2 = zr * zr;
         zi2 = zi * zi;
     }
+
+    // Handle remaining iterations
+    for (; i < max_iter; i++) {
+        if (zr2 + zi2 > 4.0) return i;
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
+        zr2 = zr * zr;
+        zi2 = zi * zi;
+    }
+
     return max_iter;
 }
 
@@ -49,12 +90,16 @@ EXPORT void compute_mandelbrot(
     int max_iter,
     int* output
 ) {
-    // Parallelize with OpenMP
-    #pragma omp parallel for schedule(dynamic) collapse(2)
+    // Pre-calculate step sizes for better performance
+    double dx = (xmax - xmin) / width;
+    double dy = (ymax - ymin) / height;
+
+    // Parallelize with OpenMP - use static scheduling for better cache performance
+    #pragma omp parallel for schedule(static) collapse(2)
     for (int py = 0; py < height; py++) {
         for (int px = 0; px < width; px++) {
-            double cr = xmin + (xmax - xmin) * px / width;
-            double ci = ymin + (ymax - ymin) * py / height;
+            double cr = xmin + dx * px;
+            double ci = ymin + dy * py;
             output[py * width + px] = mandelbrot_point(cr, ci, max_iter);
         }
     }
