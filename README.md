@@ -16,8 +16,6 @@ matplotlib interactivity.
 - `mandelbrot_compute.dll` - Compiled C library for Python to use
 - `interactive_mandelbrot_fast.py` - Interactive matplotlib visualizer with C
   backend
-- `mandelbrot_fast.c` - Standalone C program that outputs BMP images
-- `mandelbrot_fast.exe` - Compiled standalone program
 
 ## 🔧 Setup
 
@@ -30,21 +28,12 @@ matplotlib interactivity.
    ```
 
 2. **Run the interactive explorer**:
+
    ```bash
    python interactive_mandelbrot_fast.py
    ```
 
-### Standalone BMP Version
-
-**Already compiled!** Just run:
-
-```bash
-./mandelbrot_fast.exe
-./mandelbrot_fast.exe -0.5 0.0 10.0        # zoom 10x
-./mandelbrot_fast.exe -0.75 0.1 100.0 512  # zoom 100x, 512 iterations
-```
-
-## 🎮 Controls (Interactive Version)
+## 🎮 Controls
 
 - **Left Click** → Zoom in 3x at cursor
 - **Right Click** → Zoom out 3x
