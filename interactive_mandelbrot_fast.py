@@ -111,10 +111,32 @@ class InteractiveMandelbrot:
         self.fig, self.ax = plt.subplots(figsize=(16, 12), facecolor='black')
         self.ax.set_facecolor('black')
 
-        # Custom colormap for beautiful visualization
-        colors = ['#000033', '#000055', '#0E4C92', '#2E8BC0', '#19D3F3',
-                  '#FFF000', '#FF6B35', '#C1292E', '#5C0029', '#000000']
-        self.cmap = LinearSegmentedColormap.from_list('mandelbrot', colors, N=256)
+        # Custom colormap for beautiful visualization - expanded color range
+        colors = [
+            '#000000',  # Black (deepest)
+            '#0a0033',  # Deep blue
+            '#1a1a66',  # Dark blue
+            '#2e3192',  # Royal blue
+            '#3d5cb8',  # Medium blue
+            '#4a8fd6',  # Sky blue
+            '#56c1e8',  # Light cyan
+            '#66e9f0',  # Bright cyan
+            '#7fffd4',  # Aquamarine
+            '#99ff99',  # Light green
+            '#ccff66',  # Yellow-green
+            '#ffff00',  # Pure yellow
+            '#ffcc00',  # Golden yellow
+            '#ff9900',  # Orange
+            '#ff6600',  # Deep orange
+            '#ff3300',  # Red-orange
+            '#ff0066',  # Hot pink
+            '#cc0099',  # Magenta
+            '#8800cc',  # Purple
+            '#4400aa',  # Deep purple
+            '#220066',  # Very dark purple
+            '#000000',  # Back to black
+        ]
+        self.cmap = LinearSegmentedColormap.from_list('mandelbrot', colors, N=512)
 
         # Initial plot
         self.im = None
