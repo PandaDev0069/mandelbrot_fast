@@ -1,6 +1,4 @@
 # Build artifacts
-*.exe
-*.dll
 *.so
 *.dylib
 *.o

@@ -1,33 +1,60 @@
-# Ultra-Fast Mandelbrot Set Explorer
+# High-Performance Mandelbrot Explorer
 
-High-performance fractal visualization combining C computation speed with Python
-interactivity.
+![Mandelbrot](https://img.shields.io/badge/Render-OpenGL-green) ![Precision](https://img.shields.io/badge/Precision-128--bit-blue) ![Acceleration](https://img.shields.io/badge/Acceleration-AVX2%20%2B%20OpenMP-orange)
 
-**Performance**: 20-40x faster than pure Python • 0.1-0.5 seconds per frame
+A state-of-the-art Mandelbrot Set explorer capable of real-time rendering at extreme zoom levels ($> 10^{30}$). This project leverages **Perturbation Theory**, **Series Approximation**, and **AVX2 SIMD** instructions to overcome the limitations of standard floating-point arithmetic.
 
-![Mandelbrot Set Preview](image_1.png)
+## 🚀 Features
 
-## 🔧 Quick Start
+- **Extreme Zoom**: Explore depths exceeding $10^{30}$ with perfect precision.
+- **Hybrid Precision Engine**: Automatically switches between:
+  - `double` (64-bit) for speed at shallow zooms.
+  - `long double` (80-bit) for intermediate precision.
+  - **Perturbation Theory** (128-bit reference + 64-bit delta) for deep zooms.
+- **High Performance**:
+  - **AVX2 Vectorization**: Processes 4 pixels per cycle.
+  - **OpenMP Parallelism**: Multi-threaded rendering across all CPU cores.
+  - **Series Approximation (BLA)**: Skips up to 80% of iterations in deep zooms.
+- **Smooth Visualization**:
+  - OpenGL-based rendering.
+  - Continuous smooth coloring with dynamic histogram normalization.
+  - Palette matching standard high-quality renderers.
 
-1. **Run the interactive explorer**:
+## 🛠️ Installation & Usage
 
-   ```bash
-   python interactive_mandelbrot_fast.py
-   ```
+### Prerequisites
 
-   _(C library already compiled as `mandelbrot_compute.dll`)_
+- Python 3.x
+- Required Python packages: `glfw`, `PyOpenGL`, `numpy`, `matplotlib`
+- Windows (Pre-compiled DLL included) or GCC for compilation.
 
-## 🎮 Controls
+### Running the Explorer
 
-- **Left Click** → Zoom in 3x at cursor
-- **Right Click** → Zoom out 3x
-- **Close Window** → Exit
+Simply run the Python script:
 
-## 📚 Documentation
+```bash
+python smooth_mandelbrot.py
+```
 
-- [Performance Benchmarks](docs/performance.md) - Speed comparisons and
-  technical details
-- [Future Optimizations](docs/optimizations.md) - Ideas for GPU, SIMD,
-  multi-threading
-- [Technical Guide](docs/technical.md) - Algorithm, compilation, color
-  customization
+### Controls
+
+- **Scroll Wheel**: Zoom in / out at cursor position.
+- **Left Click**: Center the view at the cursor.
+- **ESC**: Exit the application.
+
+## 🔧 Technical Details
+
+For a deep dive into the mathematics and optimization techniques used (including Perturbation Theory and Bivariate Linear Approximation), please refer to the [Final Report](FINAL_REPORT.md).
+
+### Compilation (Optional)
+
+If you need to recompile the C backend:
+
+```bash
+gcc -shared -o mandelbrot_compute.dll mandelbrot_compute.c -O3 -march=native -fopenmp -lquadmath
+```
+
+## 📄 License
+
+This project is open source. Feel free to explore and modify.
+
