@@ -1,5 +1,7 @@
 # High-Performance Mandelbrot Explorer: Final Report
 
+[🇺🇸 English](FINAL_REPORT.md) | [🇯🇵 日本語](FINAL_REPORT_JP.md)
+
 ## 1. Project Overview
 
 This project implements a state-of-the-art **Mandelbrot Set Explorer** capable of rendering images at extreme zoom levels (exceeding $10^{30}$) in real-time. It overcomes the precision limitations of standard floating-point arithmetic by utilizing **Perturbation Theory** and **Arbitrary Precision Arithmetic** (via `__float128`), accelerated by **AVX2 SIMD** instructions and **OpenMP** parallelism.

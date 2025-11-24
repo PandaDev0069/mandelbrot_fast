@@ -2,6 +2,8 @@
 
 ![Mandelbrot](https://img.shields.io/badge/Render-OpenGL-green) ![Precision](https://img.shields.io/badge/Precision-128--bit-blue) ![Acceleration](https://img.shields.io/badge/Acceleration-AVX2%20%2B%20OpenMP-orange)
 
+[🇺🇸 English](README.md) | [🇯🇵 日本語](README_JP.md)
+
 A state-of-the-art Mandelbrot Set explorer capable of real-time rendering at extreme zoom levels ($> 10^{30}$). This project leverages **Perturbation Theory**, **Series Approximation**, and **AVX2 SIMD** instructions to overcome the limitations of standard floating-point arithmetic.
 
 ## 🚀 Features
@@ -44,7 +46,7 @@ python smooth_mandelbrot.py
 
 ## 🔧 Technical Details
 
-For a deep dive into the mathematics and optimization techniques used (including Perturbation Theory and Bivariate Linear Approximation), please refer to the [Final Report](FINAL_REPORT.md).
+For a deep dive into the mathematics and optimization techniques used (including Perturbation Theory and Bivariate Linear Approximation), please refer to the [Final Report](FINAL_REPORT.md) ([🇯🇵 Japanese Version](FINAL_REPORT_JP.md)).
 
 ### Compilation (Optional)
 
