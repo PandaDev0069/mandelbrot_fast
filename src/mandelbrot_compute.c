@@ -127,12 +127,25 @@ static void compute_mandelbrot_perturbation(
 ) {
     // 1. Compute reference orbit
     // We allocate on heap to avoid stack overflow with large max_iter
-    Real128* refs_r = (Real128*)malloc(sizeof(Real128) * (max_iter + 1));
-    Real128* refs_i = (Real128*)malloc(sizeof(Real128) * (max_iter + 1));
+    // Using aligned memory for better cache performance
+    Real128* refs_r = (Real128*)_mm_malloc(sizeof(Real128) * (max_iter + 1), 64);
+    Real128* refs_i = (Real128*)_mm_malloc(sizeof(Real128) * (max_iter + 1), 64);
     
     if (!refs_r || !refs_i) {
-        if (refs_r) free(refs_r);
-        if (refs_i) free(refs_i);
+        if (refs_r) _mm_free(refs_r);
+        if (refs_i) _mm_free(refs_i);
+        return; // Allocation failed
+    }
+    
+    // Pre-allocate double arrays to avoid repeated casts in inner loop
+    double* refs_r_d = (double*)_mm_malloc(sizeof(double) * (max_iter + 1), 64);
+    double* refs_i_d = (double*)_mm_malloc(sizeof(double) * (max_iter + 1), 64);
+    
+    if (!refs_r_d || !refs_i_d) {
+        _mm_free(refs_r);
+        _mm_free(refs_i);
+        if (refs_r_d) _mm_free(refs_r_d);
+        if (refs_i_d) _mm_free(refs_i_d);
         return; // Allocation failed
     }
 
@@ -146,6 +159,9 @@ static void compute_mandelbrot_perturbation(
     for (int i = 0; i < max_iter; i++) {
         refs_r[i] = zr;
         refs_i[i] = zi;
+        // Pre-cast to double to avoid repeated conversions in inner loop
+        refs_r_d[i] = (double)zr;
+        refs_i_d[i] = (double)zi;
         
         if (zr2 + zi2 > 4.0Q) {
             ref_iter = i;
@@ -203,6 +219,12 @@ static void compute_mandelbrot_perturbation(
     // 2. Parallel perturbation loop
     double dx_d = (double)dx;
     double dy_d = (double)dy;
+    
+    // Hoist SIMD constants outside loop to avoid recomputation
+    const __m256d const_two = _mm256_set1_pd(2.0);
+    const __m256d const_four = _mm256_set1_pd(4.0);
+    const __m256i const_one_i = _mm256_set1_epi64x(1);
+    const __m256i const_four_i = _mm256_set1_epi64x(4);
     
     #ifdef _OPENMP
     #pragma omp parallel for schedule(guided)
@@ -271,20 +293,19 @@ static void compute_mandelbrot_perturbation(
 
                 // --- Iteration 0 ---
                 {
-                    double X = (double)refs_r[i];
-                    double Y = (double)refs_i[i];
+                    double X = refs_r_d[i];
+                    double Y = refs_i_d[i];
                     __m256d vX = _mm256_set1_pd(X);
                     __m256d vY = _mm256_set1_pd(Y);
                     
                     // Perturbation: dz = 2*Z*dz + dz^2 + dc
                     // Use FMA: 2*X*dzr - 2*Y*dzi + (dzr^2 - dzi^2 + dcr)
                     
-                    __m256d vtwo = _mm256_set1_pd(2.0);
-                    __m256d vtwoX = _mm256_mul_pd(vtwo, vX);
-                    __m256d vtwoY = _mm256_mul_pd(vtwo, vY);
+                    __m256d vtwoX = _mm256_mul_pd(const_two, vX);
+                    __m256d vtwoY = _mm256_mul_pd(const_two, vY);
                     
                     __m256d term_sq_r = _mm256_add_pd(_mm256_sub_pd(vdzr2, vdzi2), vdcr);
-                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(vtwo, _mm256_mul_pd(vdzr, vdzi)), vdci);
+                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(const_two, _mm256_mul_pd(vdzr, vdzi)), vdci);
                     
                     // next_dzr = 2*X*dzr - 2*Y*dzi + term_sq_r
                     // = fma(2*X, dzr, term_sq_r - 2*Y*dzi)
@@ -301,17 +322,16 @@ static void compute_mandelbrot_perturbation(
                 
                 // --- Iteration 1 ---
                 {
-                    double X = (double)refs_r[i+1];
-                    double Y = (double)refs_i[i+1];
+                    double X = refs_r_d[i+1];
+                    double Y = refs_i_d[i+1];
                     __m256d vX = _mm256_set1_pd(X);
                     __m256d vY = _mm256_set1_pd(Y);
                     
-                    __m256d vtwo = _mm256_set1_pd(2.0);
-                    __m256d vtwoX = _mm256_mul_pd(vtwo, vX);
-                    __m256d vtwoY = _mm256_mul_pd(vtwo, vY);
+                    __m256d vtwoX = _mm256_mul_pd(const_two, vX);
+                    __m256d vtwoY = _mm256_mul_pd(const_two, vY);
                     
                     __m256d term_sq_r = _mm256_add_pd(_mm256_sub_pd(vdzr2, vdzi2), vdcr);
-                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(vtwo, _mm256_mul_pd(vdzr, vdzi)), vdci);
+                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(const_two, _mm256_mul_pd(vdzr, vdzi)), vdci);
                     
                     __m256d next_dzr = _mm256_fmadd_pd(vtwoX, vdzr, _mm256_fnmadd_pd(vtwoY, vdzi, term_sq_r));
                     __m256d next_dzi = _mm256_fmadd_pd(vtwoX, vdzi, _mm256_fmadd_pd(vtwoY, vdzr, term_sq_i));
@@ -324,17 +344,16 @@ static void compute_mandelbrot_perturbation(
 
                 // --- Iteration 2 ---
                 {
-                    double X = (double)refs_r[i+2];
-                    double Y = (double)refs_i[i+2];
+                    double X = refs_r_d[i+2];
+                    double Y = refs_i_d[i+2];
                     __m256d vX = _mm256_set1_pd(X);
                     __m256d vY = _mm256_set1_pd(Y);
                     
-                    __m256d vtwo = _mm256_set1_pd(2.0);
-                    __m256d vtwoX = _mm256_mul_pd(vtwo, vX);
-                    __m256d vtwoY = _mm256_mul_pd(vtwo, vY);
+                    __m256d vtwoX = _mm256_mul_pd(const_two, vX);
+                    __m256d vtwoY = _mm256_mul_pd(const_two, vY);
                     
                     __m256d term_sq_r = _mm256_add_pd(_mm256_sub_pd(vdzr2, vdzi2), vdcr);
-                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(vtwo, _mm256_mul_pd(vdzr, vdzi)), vdci);
+                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(const_two, _mm256_mul_pd(vdzr, vdzi)), vdci);
                     
                     __m256d next_dzr = _mm256_fmadd_pd(vtwoX, vdzr, _mm256_fnmadd_pd(vtwoY, vdzi, term_sq_r));
                     __m256d next_dzi = _mm256_fmadd_pd(vtwoX, vdzi, _mm256_fmadd_pd(vtwoY, vdzr, term_sq_i));
@@ -347,17 +366,16 @@ static void compute_mandelbrot_perturbation(
 
                 // --- Iteration 3 ---
                 {
-                    double X = (double)refs_r[i+3];
-                    double Y = (double)refs_i[i+3];
+                    double X = refs_r_d[i+3];
+                    double Y = refs_i_d[i+3];
                     __m256d vX = _mm256_set1_pd(X);
                     __m256d vY = _mm256_set1_pd(Y);
                     
-                    __m256d vtwo = _mm256_set1_pd(2.0);
-                    __m256d vtwoX = _mm256_mul_pd(vtwo, vX);
-                    __m256d vtwoY = _mm256_mul_pd(vtwo, vY);
+                    __m256d vtwoX = _mm256_mul_pd(const_two, vX);
+                    __m256d vtwoY = _mm256_mul_pd(const_two, vY);
                     
                     __m256d term_sq_r = _mm256_add_pd(_mm256_sub_pd(vdzr2, vdzi2), vdcr);
-                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(vtwo, _mm256_mul_pd(vdzr, vdzi)), vdci);
+                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(const_two, _mm256_mul_pd(vdzr, vdzi)), vdci);
                     
                     __m256d next_dzr = _mm256_fmadd_pd(vtwoX, vdzr, _mm256_fnmadd_pd(vtwoY, vdzi, term_sq_r));
                     __m256d next_dzi = _mm256_fmadd_pd(vtwoX, vdzi, _mm256_fmadd_pd(vtwoY, vdzr, term_sq_i));
@@ -370,8 +388,8 @@ static void compute_mandelbrot_perturbation(
                 
                 // --- Check Escape (Once every 4 iterations) ---
                 // Use the Z from the LAST iteration (i+3)
-                double X = (double)refs_r[i+3];
-                double Y = (double)refs_i[i+3];
+                double X = refs_r_d[i+3];
+                double Y = refs_i_d[i+3];
                 __m256d vX = _mm256_set1_pd(X);
                 __m256d vY = _mm256_set1_pd(Y);
                 
@@ -382,9 +400,7 @@ static void compute_mandelbrot_perturbation(
                     _mm256_mul_pd(vZ_plus_dz_r, vZ_plus_dz_r),
                     _mm256_mul_pd(vZ_plus_dz_i, vZ_plus_dz_i)
                 );
-                
-                __m256d vfour = _mm256_set1_pd(4.0);
-                __m256d vcmp = _mm256_cmp_pd(vmod, vfour, _CMP_GT_OQ);
+                __m256d vcmp = _mm256_cmp_pd(vmod, const_four, _CMP_GT_OQ);
                 __m256i vcmp_i = _mm256_castpd_si256(vcmp);
                 
                 // Update mask
@@ -417,10 +433,9 @@ static void compute_mandelbrot_perturbation(
                 // vfour_i = 4
                 // viter = viter + (vmask & 4) ? No, vmask is -1.
                 // viter = viter - (vmask + vmask + vmask + vmask) ?
-                __m256i v4 = _mm256_set1_epi64x(4);
                 // We only add 4 if vmask is -1. If vmask is 0, add 0.
                 // vadd = v4 & vmask
-                __m256i vadd = _mm256_and_si256(v4, vmask);
+                __m256i vadd = _mm256_and_si256(const_four_i, vmask);
                 viter = _mm256_add_epi64(viter, vadd);
                 
                 // Store modulus for escaped pixels
@@ -443,8 +458,8 @@ static void compute_mandelbrot_perturbation(
             // If we finished loop, we might have 1-3 iters left.
             if (!all_escaped) {
                 for (; i < limit; i++) {
-                    double X = (double)refs_r[i];
-                    double Y = (double)refs_i[i];
+                    double X = refs_r_d[i];
+                    double Y = refs_i_d[i];
                     __m256d vX = _mm256_set1_pd(X);
                     __m256d vY = _mm256_set1_pd(Y);
                     
@@ -456,15 +471,13 @@ static void compute_mandelbrot_perturbation(
                         _mm256_mul_pd(vZ_plus_dz_i, vZ_plus_dz_i)
                     );
                     
-                    __m256d vfour = _mm256_set1_pd(4.0);
-                    __m256d vcmp = _mm256_cmp_pd(vmod, vfour, _CMP_GT_OQ);
+                    __m256d vcmp = _mm256_cmp_pd(vmod, const_four, _CMP_GT_OQ);
                     __m256i vcmp_i = _mm256_castpd_si256(vcmp);
                     
                     vmask = _mm256_andnot_si256(vcmp_i, vmask);
                     
                     // Add 1 to active
-                    __m256i v1 = _mm256_set1_epi64x(1);
-                    __m256i vadd = _mm256_and_si256(v1, vmask);
+                    __m256i vadd = _mm256_and_si256(const_one_i, vmask);
                     viter = _mm256_add_epi64(viter, vadd);
                     
                     vmodulus = _mm256_blendv_pd(vmodulus, vmod, _mm256_castsi256_pd(vmask));
@@ -472,12 +485,11 @@ static void compute_mandelbrot_perturbation(
                     if (_mm256_testz_si256(vmask, vmask)) break;
                     
                     // Perturbation
-                    __m256d vtwo = _mm256_set1_pd(2.0);
-                    __m256d vtwoX = _mm256_mul_pd(vtwo, vX);
-                    __m256d vtwoY = _mm256_mul_pd(vtwo, vY);
+                    __m256d vtwoX = _mm256_mul_pd(const_two, vX);
+                    __m256d vtwoY = _mm256_mul_pd(const_two, vY);
                     
                     __m256d term_sq_r = _mm256_add_pd(_mm256_sub_pd(vdzr2, vdzi2), vdcr);
-                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(vtwo, _mm256_mul_pd(vdzr, vdzi)), vdci);
+                    __m256d term_sq_i = _mm256_add_pd(_mm256_mul_pd(const_two, _mm256_mul_pd(vdzr, vdzi)), vdci);
                     
                     __m256d next_dzr = _mm256_fmadd_pd(vtwoX, vdzr, _mm256_fnmadd_pd(vtwoY, vdzi, term_sq_r));
                     __m256d next_dzi = _mm256_fmadd_pd(vtwoX, vdzi, _mm256_fmadd_pd(vtwoY, vdzr, term_sq_i));
@@ -531,8 +543,8 @@ static void compute_mandelbrot_perturbation(
             int limit = ref_iter;
             
             for (int i = skip_iter; i < limit; i++) {
-                double X = (double)refs_r[i];
-                double Y = (double)refs_i[i];
+                double X = refs_r_d[i];
+                double Y = refs_i_d[i];
                 
                 double Z_plus_dz_r = X + dzr;
                 double Z_plus_dz_i = Y + dzi;
@@ -562,8 +574,10 @@ static void compute_mandelbrot_perturbation(
         }
     }
     
-    free(refs_r);
-    free(refs_i);
+    _mm_free(refs_r);
+    _mm_free(refs_i);
+    _mm_free(refs_r_d);
+    _mm_free(refs_i_d);
 }
 
 EXPORT void compute_mandelbrot_str(

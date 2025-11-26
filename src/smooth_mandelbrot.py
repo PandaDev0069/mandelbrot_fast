@@ -121,7 +121,8 @@ class FastMandelbrotCompute:
     def __init__(self):
         dll_name = 'mandelbrot_compute.dll'
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        dll_path = os.path.join(script_dir, dll_name)
+        # Look in lib directory
+        dll_path = os.path.join(os.path.dirname(script_dir), 'lib', dll_name)
 
         try:
             self.lib = ctypes.CDLL(dll_path)
