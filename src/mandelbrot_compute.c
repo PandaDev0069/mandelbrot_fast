@@ -114,7 +114,7 @@ EXPORT int get_precision_mode(const char* xmin_str, const char* xmax_str, int wi
     Real128 w = xmax - xmin;
     
     if (w > 1.0e-13Q) return 0; // double
-    if (w > 1.0e-17Q) return 1; // long double
+    if (w > 1.0e-18Q) return 1; // long double (extended range)
     return 3; // Perturbation (Quad reference + Double delta)
 }
 
@@ -189,7 +189,8 @@ static void compute_mandelbrot_perturbation(
     // Threshold for approximation validity
     // We want |B_n * dc| < threshold
     // If it grows too large, the z^2 term in perturbation becomes significant
-    const double approx_threshold = 1.0e-9; 
+    // Use very conservative threshold to preserve detail at deep zooms
+    const double approx_threshold = 1.0e-12; 
     
     for (int i = 0; i < ref_iter; i++) {
         // Check magnitude
@@ -387,9 +388,11 @@ static void compute_mandelbrot_perturbation(
                 }
                 
                 // --- Check Escape (Once every 4 iterations) ---
-                // Use the Z from the LAST iteration (i+3)
-                double X = refs_r_d[i+3];
-                double Y = refs_i_d[i+3];
+                // After 4 iterations, we're now at iteration i+4, so check against that reference
+                // But clamp to avoid accessing beyond ref_iter
+                int check_idx = (i + 4 < ref_iter) ? i + 4 : ref_iter - 1;
+                double X = refs_r_d[check_idx];
+                double Y = refs_i_d[check_idx];
                 __m256d vX = _mm256_set1_pd(X);
                 __m256d vY = _mm256_set1_pd(Y);
                 
@@ -403,43 +406,23 @@ static void compute_mandelbrot_perturbation(
                 __m256d vcmp = _mm256_cmp_pd(vmod, const_four, _CMP_GT_OQ);
                 __m256i vcmp_i = _mm256_castpd_si256(vcmp);
                 
-                // Update mask
-                // If already inactive, stay inactive.
-                // If active and escaped, become inactive.
+                // For pixels that just escaped, store their iteration count and modulus
+                // vcmp_i has -1 for escaped pixels
+                // We want to update viter and vmodulus ONLY for newly escaped pixels
+                // Newly escaped = (vmask is active) AND (vcmp_i shows escaped)
+                __m256i newly_escaped = _mm256_and_si256(vmask, vcmp_i);
+                
+                // For newly escaped pixels, set iteration to i+4
+                __m256i viter_escaped = _mm256_set1_epi64x(i + 4);
+                // Update viter: if newly escaped, use i+4, else keep old value
+                viter = _mm256_blendv_epi8(viter, viter_escaped, newly_escaped);
+                
+                // Store modulus for newly escaped pixels
+                vmodulus = _mm256_blendv_pd(vmodulus, vmod, _mm256_castsi256_pd(newly_escaped));
+                
+                // Update mask: pixels that haven't escaped yet remain active
                 // vmask = vmask & ~vcmp_i
                 vmask = _mm256_andnot_si256(vcmp_i, vmask);
-                
-                // Increment iter by 4 for active pixels
-                // viter += 4 * (mask & 1)
-                // vmask is -1 (1111...) for active.
-                // We want to add 4 if active.
-                // _mm256_sub_epi64(viter, vmask) adds 1.
-                // We need to add 4.
-                // viter = viter - (vmask << 2)? No shift for epi64 in AVX2 easily?
-                // Just add 4 masked?
-                // Or: viter = viter + 4 (if active).
-                // Since we update vmask *after* checking escape, the pixels that *just* escaped were active during these 4 steps.
-                // So we should add 4 to all currently active pixels (before mask update)?
-                // No, if it escaped at step 1, 2, 3, or 4, we count it as 4 steps here.
-                // This is the "overshoot" error. It's fine.
-                
-                // Actually, vmask is updated *after* check.
-                // So if it was active at start of block, and escaped at end, we count +4.
-                // But we need to only add to those that were active *before* the check?
-                // Yes, vmask holds the state *before* the check (from previous block).
-                // So we add 4 to all pixels in vmask.
-                
-                // viter = viter + 4 (masked)
-                // vfour_i = 4
-                // viter = viter + (vmask & 4) ? No, vmask is -1.
-                // viter = viter - (vmask + vmask + vmask + vmask) ?
-                // We only add 4 if vmask is -1. If vmask is 0, add 0.
-                // vadd = v4 & vmask
-                __m256i vadd = _mm256_and_si256(const_four_i, vmask);
-                viter = _mm256_add_epi64(viter, vadd);
-                
-                // Store modulus for escaped pixels
-                vmodulus = _mm256_blendv_pd(vmodulus, vmod, _mm256_castsi256_pd(vmask));
                 
                 if (_mm256_testz_si256(vmask, vmask)) {
                     all_escaped = 1;
@@ -474,13 +457,14 @@ static void compute_mandelbrot_perturbation(
                     __m256d vcmp = _mm256_cmp_pd(vmod, const_four, _CMP_GT_OQ);
                     __m256i vcmp_i = _mm256_castpd_si256(vcmp);
                     
+                    // For newly escaped pixels, record iteration and modulus
+                    __m256i newly_escaped = _mm256_and_si256(vmask, vcmp_i);
+                    __m256i viter_escaped = _mm256_set1_epi64x(i);
+                    viter = _mm256_blendv_epi8(viter, viter_escaped, newly_escaped);
+                    vmodulus = _mm256_blendv_pd(vmodulus, vmod, _mm256_castsi256_pd(newly_escaped));
+                    
+                    // Update mask
                     vmask = _mm256_andnot_si256(vcmp_i, vmask);
-                    
-                    // Add 1 to active
-                    __m256i vadd = _mm256_and_si256(const_one_i, vmask);
-                    viter = _mm256_add_epi64(viter, vadd);
-                    
-                    vmodulus = _mm256_blendv_pd(vmodulus, vmod, _mm256_castsi256_pd(vmask));
                     
                     if (_mm256_testz_si256(vmask, vmask)) break;
                     
