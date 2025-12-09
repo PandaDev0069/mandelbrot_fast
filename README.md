@@ -12,6 +12,26 @@ extreme zoom levels ($> 10^{30}$). This project leverages **Perturbation
 Theory**, **Series Approximation**, and **AVX2 SIMD** instructions to overcome
 the limitations of standard floating-point arithmetic.
 
+## 📸 Gallery
+
+<p align="center">
+  <img src="public/image1.png" alt="Mandelbrot Set Overview" width="800"/>
+  <br/>
+  <em>Classic Mandelbrot Set with smooth coloring</em>
+</p>
+
+<p align="center">
+  <img src="public/image2.png" alt="Deep Zoom Detail" width="800"/>
+  <br/>
+  <em>Deep zoom revealing intricate fractal patterns</em>
+</p>
+
+<p align="center">
+  <img src="public/image3.png" alt="Extreme Precision Rendering" width="800"/>
+  <br/>
+  <em>Extreme zoom demonstrating 128-bit precision capabilities</em>
+</p>
+
 **Recent optimizations** (Nov 2025) provide **1.5-2× speedup** through:
 
 - Pre-cast reference orbit arrays (eliminates type conversion overhead)
@@ -78,8 +98,10 @@ python src/smooth_mandelbrot.py
 For a deep dive into the mathematics and optimization techniques used (including
 Perturbation Theory and Bivariate Linear Approximation), please refer to:
 
-- [Final Report](docs/FINAL_REPORT.md) ([🇯🇵 Japanese Version](docs/FINAL_REPORT_JP.md))
-- [Optimization Guide](docs/OPTIMIZATIONS.md) - Details on recent performance improvements
+- [Final Report](docs/FINAL_REPORT.md)
+  ([🇯🇵 Japanese Version](docs/FINAL_REPORT_JP.md))
+- [Optimization Guide](docs/OPTIMIZATIONS.md) - Details on recent performance
+  improvements
 
 ### Performance Testing
 
