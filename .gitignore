@@ -9,10 +9,6 @@
 /*.so
 /*.dylib
 
-# Output files
-*.bmp
-*.png
-*.jpg
 
 # Python cache
 __pycache__/
